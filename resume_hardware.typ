@@ -6,7 +6,7 @@
 
 // 设置字体
 #set text(
-  font: ("Noto Sans CJK SC", "Noto Serif CJK SC"),
+  font: ("Noto Sans CJK SC", "Noto Serif CJK SC", "DejaVu Sans"),
   size: 10.5pt,
   lang: "zh",
 )
@@ -35,15 +35,23 @@
 ]
 
 // 技能标签样式
-#let skill_tag(skill) = [
-  #box(
-    fill: rgb("#fef2f2"),
+#let skill_tag(skill, level: "expert") = {
+  let color = if level == "expert" {
+    (bg: rgb("#fef2f2"), border: rgb("#dc2626"), text: rgb("#7f1d1d"))
+  } else if level == "proficient" {
+    (bg: rgb("#f0fdf4"), border: rgb("#22c55e"), text: rgb("#16a34a"))
+  } else {
+    (bg: rgb("#eff6ff"), border: rgb("#3b82f6"), text: rgb("#1e40af"))
+  }
+  
+  box(
+    fill: color.bg,
     inset: (x: 0.4em, y: 0.2em),
     radius: 0.2em,
-    stroke: 1pt + rgb("#dc2626"),
-    [#text(size: 9pt, fill: rgb("#7f1d1d"))[#skill]]
+    stroke: 1pt + color.border,
+    [#text(size: 9pt, fill: color.text)[#skill]]
   )
-]
+}
 
 // ================================
 // 个人信息头部
@@ -93,19 +101,19 @@
   column-gutter: 1em,
   row-gutter: 0.5em,
   
-  [*AI开发工具*], [#skill_tag("Claude Code") #skill_tag("Cursor") #skill_tag("AI辅助编程")],
+  [*AI开发工具*], [#skill_tag("Claude Code", level: "proficient") #skill_tag("Cursor", level: "proficient") #skill_tag("AI辅助编程", level: "proficient")],
   
-  [*嵌入式开发*], [#skill_tag("C/C++") #skill_tag("STM32") #skill_tag("Arduino") #skill_tag("RTOS") #skill_tag("FreeRTOS")],
+  [*嵌入式开发*], [#skill_tag("C/C++", level: "expert") #skill_tag("STM32", level: "expert") #skill_tag("Arduino", level: "proficient") #skill_tag("RTOS", level: "proficient") #skill_tag("FreeRTOS", level: "basic")],
   
-  [*硬件设计*], [#skill_tag("PCB设计") #skill_tag("嘉立创EDA") #skill_tag("Altium Designer") #skill_tag("电路仿真")],
+  [*硬件设计*], [#skill_tag("PCB设计", level: "expert") #skill_tag("嘉立创EDA", level: "expert") #skill_tag("Altium Designer", level: "basic") #skill_tag("电路仿真", level: "proficient")],
   
-  [*控制系统*], [#skill_tag("PID控制") #skill_tag("电机驱动") #skill_tag("传感器") #skill_tag("DSP") #skill_tag("FPGA")],
+  [*控制系统*], [#skill_tag("PID控制", level: "expert") #skill_tag("电机驱动", level: "expert") #skill_tag("传感器", level: "proficient") #skill_tag("DSP", level: "basic") #skill_tag("FPGA", level: "basic")],
   
-  [*通信协议*], [#skill_tag("UART") #skill_tag("SPI") #skill_tag("I2C") #skill_tag("CAN") #skill_tag("Modbus")],
+  [*通信协议*], [#skill_tag("UART", level: "expert") #skill_tag("SPI", level: "expert") #skill_tag("I2C", level: "expert") #skill_tag("CAN", level: "proficient") #skill_tag("Modbus", level: "basic")],
   
-  [*开发工具*], [#skill_tag("Keil") #skill_tag("STM32CubeIDE") #skill_tag("JTAG调试") #skill_tag("示波器")],
+  [*开发工具*], [#skill_tag("Keil", level: "expert") #skill_tag("STM32CubeIDE", level: "expert") #skill_tag("JTAG调试", level: "proficient") #skill_tag("示波器", level: "proficient")],
   
-  [*算法与AI*], [#skill_tag("强化学习") #skill_tag("控制算法") #skill_tag("Python") #skill_tag("MATLAB")],
+  [*算法与AI*], [#skill_tag("强化学习", level: "proficient") #skill_tag("控制算法", level: "expert") #skill_tag("Python", level: "proficient") #skill_tag("MATLAB", level: "basic")],
 )
 
 #v(0.8em)
@@ -121,16 +129,16 @@
   column-gutter: 1em,
   row-gutter: 0.3em,
   
-  [🏆], [*英语四级证书* - 全国大学英语四级考试委员会], [2024.06],
+  [★], [*英语四级证书* - 全国大学英语四级考试委员会], [2024.06],
   [], [具备良好的英语读写能力，能够阅读英文技术文档], [],
   
-  [🏆], [*全国数学建模竞赛陕西省一等奖* - 中国工业与应用数学学会], [2023.12],
+  [●], [*全国数学建模竞赛陕西省一等奖* - 中国工业与应用数学学会], [2023.12],
   [], [展现了系统建模和算法优化能力], [],
   
-  [🏆], [*全国大学生数学竞赛陕西省一等奖* - 中国数学会], [2024.11],
+  [●], [*全国大学生数学竞赛陕西省一等奖* - 中国数学会], [2024.11],
   [], [为控制理论和信号处理提供了坚实的数学基础], [],
   
-  [🏆], [*Rust训练营优秀营员* - RustCC社区 & 清华大学开源学习营], [2024.03],
+  [▲], [*Rust训练营优秀营员* - RustCC社区 & 清华大学开源学习营], [2025.03],
   [], [掌握了现代系统编程，可用于高性能嵌入式开发], [],
 )
 

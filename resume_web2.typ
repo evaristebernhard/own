@@ -6,7 +6,7 @@
 
 // 设置字体
 #set text(
-  font: ("Noto Sans CJK SC", "Noto Serif CJK SC"),
+  font: ("Noto Sans CJK SC", "Noto Serif CJK SC", "DejaVu Sans"),
   size: 10.5pt,
   lang: "zh",
 )
@@ -35,15 +35,23 @@
 ]
 
 // 技能标签样式
-#let skill_tag(skill) = [
-  #box(
-    fill: rgb("#eff6ff"),
+#let skill_tag(skill, level: "expert") = {
+  let color = if level == "expert" {
+    (bg: rgb("#eff6ff"), border: rgb("#3b82f6"), text: rgb("#1e40af"))
+  } else if level == "proficient" {
+    (bg: rgb("#f0fdf4"), border: rgb("#22c55e"), text: rgb("#16a34a"))
+  } else {
+    (bg: rgb("#fef2f2"), border: rgb("#ef4444"), text: rgb("#dc2626"))
+  }
+  
+  box(
+    fill: color.bg,
     inset: (x: 0.4em, y: 0.2em),
     radius: 0.2em,
-    stroke: 1pt + rgb("#3b82f6"),
-    [#text(size: 9pt, fill: rgb("#1e40af"))[#skill]]
+    stroke: 1pt + color.border,
+    [#text(size: 9pt, fill: color.text)[#skill]]
   )
-]
+}
 
 // ================================
 // 个人信息头部
@@ -93,17 +101,17 @@
   column-gutter: 1em,
   row-gutter: 0.5em,
   
-  [*AI开发工具*], [#skill_tag("Claude Code") #skill_tag("Cursor") #skill_tag("AI辅助编程") #skill_tag("代码生成")],
+  [*AI开发工具*], [#skill_tag("Claude Code", level: "proficient") #skill_tag("Cursor", level: "proficient") #skill_tag("AI辅助编程", level: "proficient") #skill_tag("代码生成", level: "basic")],
   
-  [*前端开发*], [#skill_tag("Vue.js") #skill_tag("React") #skill_tag("JavaScript") #skill_tag("TypeScript") #skill_tag("HTML5/CSS3")],
+  [*前端开发*], [#skill_tag("Vue.js", level: "expert") #skill_tag("React", level: "expert") #skill_tag("JavaScript", level: "expert") #skill_tag("TypeScript", level: "proficient") #skill_tag("HTML5/CSS3", level: "expert")],
   
-  [*后端技术*], [#skill_tag("Node.js") #skill_tag("Python") #skill_tag("RESTful API") #skill_tag("数据库") #skill_tag("微服务")],
+  [*后端技术*], [#skill_tag("Node.js", level: "proficient") #skill_tag("Python", level: "proficient") #skill_tag("RESTful API", level: "expert") #skill_tag("数据库", level: "proficient") #skill_tag("微服务", level: "basic")],
   
-  [*RPA开发*], [#skill_tag("流程自动化") #skill_tag("业务流程优化") #skill_tag("界面自动化") #skill_tag("数据采集")],
+  [*RPA开发*], [#skill_tag("流程自动化", level: "expert") #skill_tag("业务流程优化", level: "expert") #skill_tag("界面自动化", level: "proficient") #skill_tag("数据采集", level: "proficient")],
   
-  [*开发工具*], [#skill_tag("IntelliJ IDEA") #skill_tag("VS Code") #skill_tag("Git") #skill_tag("Docker") #skill_tag("CI/CD")],
+  [*开发工具*], [#skill_tag("IntelliJ IDEA", level: "expert") #skill_tag("VS Code", level: "expert") #skill_tag("Git", level: "expert") #skill_tag("Docker", level: "proficient") #skill_tag("CI/CD", level: "proficient")],
   
-  [*数据与AI*], [#skill_tag("数据分析") #skill_tag("机器学习") #skill_tag("Python") #skill_tag("数据可视化")],
+  [*数据与AI*], [#skill_tag("数据分析", level: "proficient") #skill_tag("机器学习", level: "proficient") #skill_tag("Python", level: "proficient") #skill_tag("数据可视化", level: "expert")],
 )
 
 #v(0.8em)
@@ -119,16 +127,16 @@
   column-gutter: 1em,
   row-gutter: 0.3em,
   
-  [🏆], [*英语四级证书* - 全国大学英语四级考试委员会], [2024.06],
+  [★], [*英语四级证书* - 全国大学英语四级考试委员会], [2024.06],
   [], [具备良好的英语读写能力，能够阅读英文技术文档], [],
   
-  [🏆], [*全国数学建模竞赛陕西省一等奖* - 中国工业与应用数学学会], [2023.12],
+  [●], [*全国数学建模竞赛陕西省一等奖* - 中国工业与应用数学学会], [2023.12],
   [], [展现了数据建模和算法优化能力], [],
   
-  [🏆], [*全国大学生数学竞赛陕西省一等奖* - 中国数学会], [2024.11],
+  [●], [*全国大学生数学竞赛陕西省一等奖* - 中国数学会], [2024.11],
   [], [为算法设计和数据分析提供了坚实基础], [],
   
-  [🏆], [*Rust训练营优秀营员* - RustCC社区 & 清华大学开源学习营], [2024.03],
+  [▲], [*Rust训练营优秀营员* - RustCC社区 & 清华大学开源学习营], [2025.03],
   [], [掌握了现代编程语言，具备高性能后端开发潜力], [],
 )
 
