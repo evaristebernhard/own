@@ -320,10 +320,411 @@ $ |G| = |G dot x| dot |G_x| $
 
 在深度学习应用中，几个重要的群结构值得特别关注：
 
-1. *循环群* $C_n$：有限旋转对称群
-2. *二面体群* $D_n$：包含反射的对称群  
-3. *正交群* $O(n)$：保持内积的线性变换群
-4. *特殊正交群* $S O(n)$：行列式为1的正交变换群
+==== 循环群 $C_n$ 的详细分析
+
+循环群 $C_n$ 是最简单的非平凡有限群，由单个元素生成。
+
+*数学定义*：$C_n = angle.l g | g^n = e angle.r$，其中 $g$ 是生成元。
+
+*具体例子*：
+- $C_4 = {e, g, g^2, g^3}$，其中 $g$ 表示90°旋转
+- 群表为：
+
+#align(center)[
+#table(
+  columns: 5,
+  [·], [e], [g], [g²], [g³],
+  [e], [e], [g], [g²], [g³],
+  [g], [g], [g²], [g³], [e],
+  [g²], [g²], [g³], [e], [g],
+  [g³], [g³], [e], [g], [g²]
+)
+]
+
+*深度学习应用*：
+- 图像的90°旋转不变性（正方形图像）
+- 视频中的周期性运动检测
+- 信号处理中的周期模式识别
+
+*代码实现*：
+```python
+class C4EquivariantConv2D(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super().__init__()
+        self.kernel_size = kernel_size
+        # 基础卷积核
+        self.base_kernel = nn.Parameter(
+            torch.randn(out_channels, in_channels, kernel_size, kernel_size)
+        )
+    
+    def forward(self, x):
+        # x形状: [batch, in_channels, height, width, 4] 
+        # 最后一维表示4个旋转
+        batch, in_ch, h, w, rotations = x.shape
+        
+        outputs = []
+        for r_out in range(4):  # 输出的4个旋转
+            rotation_outputs = []
+            for r_in in range(4):  # 输入的4个旋转
+                # 获取对应的旋转核
+                rotated_kernel = torch.rot90(self.base_kernel, r_out - r_in, [-2, -1])
+                # 执行卷积
+                conv_out = F.conv2d(x[:, :, :, :, r_in], rotated_kernel, padding='same')
+                rotation_outputs.append(conv_out)
+            
+            # 对所有输入旋转求和
+            outputs.append(sum(rotation_outputs))
+        
+        return torch.stack(outputs, dim=-1)
+```
+
+==== 二面体群 $D_n$ 的完整分析
+
+二面体群 $D_n$ 包含正 $n$ 边形的所有对称变换，包括旋转和反射。
+
+*数学结构*：
+- 元素个数：$2n$
+- 生成元：旋转 $r$（$2pi/n$ 弧度）和反射 $s$
+- 关系：$r^n = e$, $s^2 = e$, $s r s = r^(-1)$
+
+*$D_4$ 的具体例子*（正方形的对称群）：
+元素：${e, r, r^2, r^3, s, s r, s r^2, s r^3}$
+- $r$：90°旋转
+- $s$：沿垂直轴反射
+
+*群表的部分展示*：
+#align(center)[
+#table(
+  columns: 4,
+  [·], [r], [s], [s r],
+  [r], [r²], [s r³], [s],
+  [s], [s r], [e], [r³],
+  [s r], [s r²], [r], [e]
+)
+]
+
+*物理解释*：
+- 旋转：保持手性（chirality）
+- 反射：改变手性
+- 这对分子识别和晶体结构分析很重要
+
+*深度学习中的应用*：
+```python
+class D4EquivariantLayer(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        # 旋转等变部分
+        self.rotation_conv = C4EquivariantConv2D(channels, channels, 3)
+        # 反射等变部分  
+        self.reflection_linear = nn.Linear(channels, channels)
+        
+    def forward(self, x):
+        # x: [batch, channels, h, w, 8] - 8个D4元素
+        batch, ch, h, w, group_dim = x.shape
+        
+        # 分离旋转和反射部分
+        rotations = x[:, :, :, :, :4]  # {e, r, r², r³}
+        reflections = x[:, :, :, :, 4:]  # {s, sr, sr², sr³}
+        
+        # 旋转等变处理
+        rot_out = self.rotation_conv(rotations)
+        
+        # 反射等变处理（交换空间维度）
+        refl_processed = []
+        for i in range(4):
+            refl_i = reflections[:, :, :, :, i]
+            # 应用反射（沿某轴翻转）
+            refl_i_flipped = torch.flip(refl_i, dims=[-1])
+            refl_i_processed = self.reflection_linear(
+                refl_i_flipped.transpose(-2, -1)
+            ).transpose(-2, -1)
+            refl_processed.append(refl_i_processed)
+        
+        refl_out = torch.stack(refl_processed, dim=-1)
+        
+        return torch.cat([rot_out, refl_out], dim=-1)
+```
+
+==== 连续群：SO(3) 和 SE(3) 的深入分析
+
+*SO(3) - 三维旋转群*：
+
+数学性质：
+- 流形结构：3维实射影空间 $R P^3$
+- 李代数：$"so"(3) ≅ RR^3$，反对称矩阵
+- 双覆盖：$S U(2) -> S O(3)$（四元数表示）
+
+参数化方法：
+1. *欧拉角*：$(alpha, beta, gamma)$
+2. *轴角表示*：$omega in RR^3$，$||omega|| = $ 旋转角度
+3. *四元数*：$q = (q_0, q_1, q_2, q_3)$，$|q| = 1$
+4. *旋转矩阵*：$R in RR^(3 times 3)$，$R^T R = I$，$det(R) = 1$
+
+```python
+class SO3EquivariantPointNet(nn.Module):
+    def __init__(self, input_dim=3, hidden_dim=128, max_degree=2):
+        super().__init__()
+        self.max_degree = max_degree
+        
+        # 为每个球面调和度数创建特征提取器
+        self.feature_extractors = nn.ModuleDict()
+        for l in range(max_degree + 1):
+            self.feature_extractors[f'l_{l}'] = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim * (2*l + 1))
+            )
+        
+        # 等变消息传递
+        self.message_layers = nn.ModuleList([
+            SO3MessagePassingLayer(hidden_dim, max_degree) 
+            for _ in range(3)
+        ])
+        
+        # 不变输出层
+        self.output_layer = nn.Sequential(
+            nn.Linear(hidden_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+    
+    def forward(self, points, edge_index):
+        # points: [N, 3] 点云坐标
+        # edge_index: [2, E] 边连接
+        
+        # 提取初始特征
+        features = {}
+        for l in range(self.max_degree + 1):
+            feat_l = self.feature_extractors[f'l_{l}'](points)
+            # 重塑为球面调和形式 [N, hidden_dim, 2l+1]
+            features[f'l_{l}'] = feat_l.view(-1, self.hidden_dim, 2*l + 1)
+        
+        # 消息传递
+        for layer in self.message_layers:
+            features = layer(features, points, edge_index)
+        
+        # 只使用标量特征（l=0）进行最终预测
+        scalar_features = features['l_0'].squeeze(-1)  # [N, hidden_dim]
+        
+        return self.output_layer(scalar_features)
+
+class SO3MessagePassingLayer(nn.Module):
+    def __init__(self, hidden_dim, max_degree):
+        super().__init__()
+        self.max_degree = max_degree
+        self.hidden_dim = hidden_dim
+        
+        # Clebsch-Gordan系数（预计算）
+        self.register_buffer('cg_coeffs', self.compute_cg_coefficients())
+        
+        # 消息计算网络
+        self.message_nets = nn.ModuleDict()
+        for l_in in range(max_degree + 1):
+            for l_out in range(max_degree + 1):
+                if abs(l_out - l_in) <= 1:  # 选择规则
+                    self.message_nets[f'{l_in}_{l_out}'] = nn.Linear(
+                        hidden_dim, hidden_dim
+                    )
+    
+    def forward(self, features, positions, edge_index):
+        # 计算边上的消息
+        messages = self.compute_messages(features, positions, edge_index)
+        
+        # 聚合消息
+        new_features = {}
+        for l in range(self.max_degree + 1):
+            aggregated = self.aggregate_messages(messages[f'l_{l}'], edge_index)
+            new_features[f'l_{l}'] = features[f'l_{l}'] + aggregated
+        
+        return new_features
+    
+    def compute_messages(self, features, positions, edge_index):
+        src, dst = edge_index
+        
+        # 计算相对位置向量
+        rel_pos = positions[src] - positions[dst]  # [E, 3]
+        distances = torch.norm(rel_pos, dim=-1, keepdim=True)  # [E, 1]
+        directions = rel_pos / (distances + 1e-8)  # [E, 3]
+        
+        # 计算球面调和函数
+        spherical_harmonics = {}
+        for l in range(self.max_degree + 1):
+            Y_l = compute_spherical_harmonics(directions, l)  # [E, 2l+1]
+            spherical_harmonics[f'l_{l}'] = Y_l
+        
+        messages = {}
+        for l_out in range(self.max_degree + 1):
+            message_l = []
+            for l_in in range(self.max_degree + 1):
+                if f'{l_in}_{l_out}' in self.message_nets:
+                    # 源节点特征
+                    src_features = features[f'l_{l_in}'][src]  # [E, hidden_dim, 2l_in+1]
+                    
+                    # 应用线性变换
+                    transformed = self.message_nets[f'{l_in}_{l_out}'](
+                        src_features.transpose(-2, -1)
+                    ).transpose(-2, -1)  # [E, hidden_dim, 2l_in+1]
+                    
+                    # 与球面调和函数相乘（如果度数匹配）
+                    if l_in == l_out:
+                        Y_l = spherical_harmonics[f'l_{l_in}']  # [E, 2l+1]
+                        # 广播相乘
+                        modulated = transformed * Y_l.unsqueeze(1)  # [E, hidden_dim, 2l+1]
+                    else:
+                        # 使用Clebsch-Gordan系数耦合不同度数
+                        modulated = self.couple_spherical_harmonics(
+                            transformed, spherical_harmonics[f'l_{l_out}'], l_in, l_out
+                        )
+                    
+                    message_l.append(modulated)
+            
+            messages[f'l_{l_out}'] = sum(message_l) if message_l else torch.zeros_like(features[f'l_{l_out}'])
+        
+        return messages
+
+def compute_spherical_harmonics(directions, max_l):
+    """计算球面调和函数"""
+    # directions: [N, 3] 单位向量
+    x, y, z = directions[:, 0], directions[:, 1], directions[:, 2]
+    
+    # 转换为球坐标
+    theta = torch.acos(torch.clamp(z, -1+1e-7, 1-1e-7))  # 极角
+    phi = torch.atan2(y, x)  # 方位角
+    
+    harmonics = {}
+    for l in range(max_l + 1):
+        Y_l = []
+        for m in range(-l, l + 1):
+            # 计算球面调和函数 Y_l^m(theta, phi)
+            Y_lm = spherical_harmonic_function(l, m, theta, phi)
+            Y_l.append(Y_lm)
+        harmonics[f'l_{l}'] = torch.stack(Y_l, dim=-1)  # [N, 2l+1]
+    
+    return harmonics
+
+def spherical_harmonic_function(l, m, theta, phi):
+    """计算单个球面调和函数"""
+    # 这里使用简化实现，实际应该使用专门的数学库
+    from scipy.special import sph_harm
+    import numpy as np
+    
+    # 转换为numpy进行计算
+    theta_np = theta.detach().cpu().numpy()
+    phi_np = phi.detach().cpu().numpy()
+    
+    # scipy使用 (phi, theta) 顺序
+    Y_lm = sph_harm(m, l, phi_np, theta_np)
+    
+    # 转换回torch tensor
+    return torch.from_numpy(Y_lm.real).to(theta.device).float()
+```
+
+*SE(3) - 特殊欧几里得群*：
+
+SE(3) 描述三维空间中的刚体运动（旋转 + 平移）。
+
+群元素表示：$g = mat(R, t; 0^T, 1) in RR^(4 times 4)$
+
+李代数：$"se"(3) = {mat(hat(omega), rho; 0^T, 0) : omega, rho in RR^3}$
+
+```python
+class SE3EquivariantNetwork(nn.Module):
+    def __init__(self, node_features, hidden_dim=128, num_layers=4):
+        super().__init__()
+        
+        self.node_embedding = nn.Linear(node_features, hidden_dim)
+        
+        # SE(3)等变层序列
+        self.se3_layers = nn.ModuleList([
+            SE3EquivariantLayer(hidden_dim) for _ in range(num_layers)
+        ])
+        
+        # 输出层（标量输出，平移和旋转不变）
+        self.output_layer = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, 1)
+        )
+    
+    def forward(self, node_features, positions, edge_index):
+        # 节点特征嵌入
+        h = self.node_embedding(node_features)  # [N, hidden_dim]
+        x = positions  # [N, 3]
+        
+        # SE(3)等变消息传递
+        for layer in self.se3_layers:
+            h, x = layer(h, x, edge_index)
+        
+        # 全局池化（保持不变性）
+        graph_features = torch.mean(h, dim=0)  # [hidden_dim]
+        
+        return self.output_layer(graph_features)
+
+class SE3EquivariantLayer(nn.Module):
+    def __init__(self, hidden_dim):
+        super().__init__()
+        
+        # 标量特征更新
+        self.scalar_mlp = nn.Sequential(
+            nn.Linear(2 * hidden_dim + 1, hidden_dim),  # +1 for distance
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        )
+        
+        # 向量特征更新权重
+        self.vector_mlp = nn.Sequential(
+            nn.Linear(2 * hidden_dim + 1, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)  # 输出标量权重
+        )
+        
+        # 位置更新
+        self.position_mlp = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+    
+    def forward(self, h, x, edge_index):
+        # h: [N, hidden_dim] 标量特征
+        # x: [N, 3] 位置坐标
+        
+        src, dst = edge_index
+        
+        # 计算相对位置和距离
+        rel_pos = x[src] - x[dst]  # [E, 3]
+        distances = torch.norm(rel_pos, dim=-1, keepdim=True)  # [E, 1]
+        
+        # 构造边特征
+        edge_features = torch.cat([
+            h[src], h[dst], distances
+        ], dim=-1)  # [E, 2*hidden_dim + 1]
+        
+        # 计算标量消息
+        scalar_messages = self.scalar_mlp(edge_features)  # [E, hidden_dim]
+        
+        # 聚合标量消息
+        h_new = torch.zeros_like(h)
+        h_new.scatter_add_(0, dst.unsqueeze(-1).expand(-1, h.size(-1)), scalar_messages)
+        
+        # 计算向量消息权重
+        vector_weights = self.vector_mlp(edge_features)  # [E, 1]
+        
+        # 向量消息（等变部分）
+        vector_messages = vector_weights * rel_pos  # [E, 3]
+        
+        # 聚合向量消息
+        x_delta = torch.zeros_like(x)
+        x_delta.scatter_add_(0, dst.unsqueeze(-1).expand(-1, 3), vector_messages)
+        
+        # 位置更新
+        position_updates = self.position_mlp(h_new)  # [N, 1]
+        x_new = x + position_updates * x_delta  # [N, 3]
+        
+        return h + h_new, x_new
+```
+
+这些详细的例子展示了如何将抽象的群论概念转化为具体的深度学习架构。每个群结构都有其特定的应用场景和实现细节。
 
 == 李群理论
 
@@ -1393,7 +1794,7 @@ $ g = mat(R, t; 0^T, 1) in RR^(4 times 4) $
 群乘法为：
 $ g_1 g_2 = mat(R_1 R_2, R_1 t_2 + t_1; 0^T, 1) $
 
-**李代数se(3)**：
+**李代数"se"(3)**：
 SE(3)的李代数是6维的，可以表示为：
 $ xi = mat(omega^times, rho; 0^T, 0) $
 
@@ -2814,6 +3215,344 @@ class MultiModalEquivariantAlignment(nn.Module):
         
         return logits, image_embeds, text_embeds
 ```
+
+=== 完整的医学影像分析案例
+
+医学影像分析中的旋转等变性应用：
+
+```python
+class MedicalImageSegmentation(nn.Module):
+    """
+    医学影像分割网络，利用旋转等变性处理任意方向的病灶
+    """
+    def __init__(self, in_channels=1, num_classes=4, group_type='SO2'):
+        super().__init__()
+        self.group_type = group_type
+        
+        # 编码器路径
+        self.encoder = nn.ModuleList([
+            # Level 1: 512x512 -> 256x256
+            self._make_encoder_block(in_channels, 64, group_type),
+            # Level 2: 256x256 -> 128x128  
+            self._make_encoder_block(64, 128, group_type),
+            # Level 3: 128x128 -> 64x64
+            self._make_encoder_block(128, 256, group_type),
+            # Level 4: 64x64 -> 32x32
+            self._make_encoder_block(256, 512, group_type),
+        ])
+        
+        # 瓶颈层
+        self.bottleneck = self._make_encoder_block(512, 1024, group_type)
+        
+        # 解码器路径
+        self.decoder = nn.ModuleList([
+            # Level 4: 32x32 -> 64x64
+            self._make_decoder_block(1024, 512, group_type),
+            # Level 3: 64x64 -> 128x128
+            self._make_decoder_block(512, 256, group_type),
+            # Level 2: 128x128 -> 256x256
+            self._make_decoder_block(256, 128, group_type),
+            # Level 1: 256x256 -> 512x512
+            self._make_decoder_block(128, 64, group_type),
+        ])
+        
+        # 最终分类层
+        self.final_conv = nn.Conv2d(64, num_classes, kernel_size=1)
+        
+        # 旋转预测层（预测最可能的方向）
+        self.rotation_predictor = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 8)  # 8个主要方向
+        )
+    
+    def _make_encoder_block(self, in_channels, out_channels, group_type):
+        if group_type == 'SO2':
+            return nn.Sequential(
+                SO2EquivariantConv2d(in_channels, out_channels, 3, padding=1),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True),
+                SO2EquivariantConv2d(out_channels, out_channels, 3, padding=1),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(2)
+            )
+        else:  # C4 group
+            return nn.Sequential(
+                C4EquivariantConv2D(in_channels, out_channels, 3),
+                nn.ReLU(inplace=True),
+                C4EquivariantConv2D(out_channels, out_channels, 3),
+                nn.ReLU(inplace=True),
+                GroupMaxPool2d(kernel_size=2)  # 等变池化
+            )
+    
+    def _make_decoder_block(self, in_channels, out_channels, group_type):
+        if group_type == 'SO2':
+            return nn.Sequential(
+                nn.ConvTranspose2d(in_channels, out_channels, 2, stride=2),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True),
+                SO2EquivariantConv2d(out_channels, out_channels, 3, padding=1),
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU(inplace=True)
+            )
+        else:
+            return nn.Sequential(
+                GroupConvTranspose2d(in_channels, out_channels, 2, stride=2),
+                nn.ReLU(inplace=True),
+                C4EquivariantConv2D(out_channels, out_channels, 3),
+                nn.ReLU(inplace=True)
+            )
+    
+    def forward(self, x):
+        # x: [batch, 1, 512, 512] 医学影像
+        
+        # 编码路径
+        skip_connections = []
+        for encoder_block in self.encoder:
+            x = encoder_block(x)
+            skip_connections.append(x)
+        
+        # 瓶颈层
+        x = self.bottleneck(x)
+        
+        # 解码路径
+        for i, decoder_block in enumerate(self.decoder):
+            x = decoder_block(x)
+            # 跳跃连接
+            if i < len(skip_connections):
+                skip = skip_connections[-(i+1)]
+                x = torch.cat([x, skip], dim=1)
+        
+        # 最终预测
+        segmentation = self.final_conv(x)
+        
+        # 旋转预测
+        rotation_logits = self.rotation_predictor(x)
+        
+        return {
+            'segmentation': segmentation,
+            'rotation': rotation_logits
+        }
+
+class SO2EquivariantConv2d(nn.Module):
+    """SO(2)等变卷积层"""
+    def __init__(self, in_channels, out_channels, kernel_size, padding=0, num_orientations=8):
+        super().__init__()
+        self.num_orientations = num_orientations
+        self.angles = torch.linspace(0, 2*math.pi, num_orientations, endpoint=False)
+        
+        # 基础卷积核
+        self.base_conv = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding, bias=False)
+        
+    def forward(self, x):
+        # x: [batch, in_channels, height, width]
+        batch_size, in_channels, H, W = x.shape
+        
+        # 为每个方向生成旋转后的卷积核
+        rotated_outputs = []
+        for angle in self.angles:
+            # 旋转输入特征图
+            rotated_x = self.rotate_tensor(x, angle)
+            # 应用卷积
+            conv_out = self.base_conv(rotated_x)
+            # 旋转回来
+            conv_out = self.rotate_tensor(conv_out, -angle)
+            rotated_outputs.append(conv_out)
+        
+        # 在方向维度上取最大值（最强响应）
+        output = torch.stack(rotated_outputs, dim=-1).max(dim=-1)[0]
+        
+        return output
+    
+    def rotate_tensor(self, x, angle):
+        """使用双线性插值旋转张量"""
+        # 简化实现，实际中应该使用更高效的方法
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        rotation_matrix = torch.tensor([
+            [cos_a, -sin_a, 0],
+            [sin_a, cos_a, 0]
+        ], dtype=x.dtype, device=x.device).unsqueeze(0).repeat(x.size(0), 1, 1)
+        
+        grid = F.affine_grid(rotation_matrix, x.size(), align_corners=False)
+        rotated = F.grid_sample(x, grid, mode='bilinear', align_corners=False)
+        
+        return rotated
+
+# 训练脚本示例
+class MedicalSegmentationTrainer:
+    def __init__(self, model, train_loader, val_loader, device):
+        self.model = model.to(device)
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        self.device = device
+        
+        # 损失函数
+        self.seg_criterion = nn.CrossEntropyLoss()
+        self.rot_criterion = nn.CrossEntropyLoss()
+        
+        # 优化器
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+        
+        # 学习率调度器
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, patience=5, factor=0.5
+        )
+        
+        # 等变损失权重
+        self.equivariance_weight = 0.1
+    
+    def train_epoch(self):
+        self.model.train()
+        total_loss = 0
+        
+        for batch_idx, (images, masks, orientations) in enumerate(self.train_loader):
+            images = images.to(self.device)
+            masks = masks.to(self.device)
+            orientations = orientations.to(self.device)
+            
+            self.optimizer.zero_grad()
+            
+            # 前向传播
+            outputs = self.model(images)
+            
+            # 分割损失
+            seg_loss = self.seg_criterion(outputs['segmentation'], masks)
+            
+            # 方向预测损失
+            rot_loss = self.rot_criterion(outputs['rotation'], orientations)
+            
+            # 等变性正则化损失
+            equivar_loss = self.compute_equivariance_loss(images, outputs['segmentation'])
+            
+            # 总损失
+            total_loss_batch = seg_loss + 0.1 * rot_loss + self.equivariance_weight * equivar_loss
+            
+            total_loss_batch.backward()
+            self.optimizer.step()
+            
+            total_loss += total_loss_batch.item()
+            
+            if batch_idx % 50 == 0:
+                print(f'Batch {batch_idx}, Loss: {total_loss_batch.item():.4f}')
+        
+        return total_loss / len(self.train_loader)
+    
+    def compute_equivariance_loss(self, images, predictions):
+        """计算等变性正则化损失"""
+        # 随机选择一个旋转角度
+        angle = torch.rand(1) * 2 * math.pi
+        
+        # 旋转输入图像
+        rotated_images = self.rotate_batch(images, angle)
+        
+        # 计算旋转后的预测
+        with torch.no_grad():
+            rotated_outputs = self.model(rotated_images)['segmentation']
+        
+        # 将预测旋转回来
+        rotated_back_predictions = self.rotate_batch(rotated_outputs, -angle)
+        
+        # 计算等变性误差
+        equivar_loss = F.mse_loss(predictions, rotated_back_predictions)
+        
+        return equivar_loss
+    
+    def rotate_batch(self, batch, angle):
+        """批量旋转操作"""
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        rotation_matrix = torch.tensor([
+            [cos_a, -sin_a, 0],
+            [sin_a, cos_a, 0]
+        ], dtype=batch.dtype, device=batch.device).unsqueeze(0).repeat(batch.size(0), 1, 1)
+        
+        grid = F.affine_grid(rotation_matrix, batch.size(), align_corners=False)
+        rotated = F.grid_sample(batch, grid, mode='bilinear', align_corners=False)
+        
+        return rotated
+    
+    def validate(self):
+        self.model.eval()
+        total_loss = 0
+        dice_scores = []
+        
+        with torch.no_grad():
+            for images, masks, orientations in self.val_loader:
+                images = images.to(self.device)
+                masks = masks.to(self.device)
+                
+                outputs = self.model(images)
+                predictions = torch.argmax(outputs['segmentation'], dim=1)
+                
+                # 计算Dice系数
+                dice = self.compute_dice_score(predictions, masks)
+                dice_scores.append(dice)
+                
+                loss = self.seg_criterion(outputs['segmentation'], masks)
+                total_loss += loss.item()
+        
+        avg_loss = total_loss / len(self.val_loader)
+        avg_dice = sum(dice_scores) / len(dice_scores)
+        
+        return avg_loss, avg_dice
+    
+    def compute_dice_score(self, predictions, targets):
+        """计算Dice系数"""
+        smooth = 1e-6
+        intersection = (predictions * targets).sum()
+        union = predictions.sum() + targets.sum()
+        dice = (2 * intersection + smooth) / (union + smooth)
+        return dice.item()
+
+# 使用示例
+def train_medical_segmentation():
+    # 初始化模型
+    model = MedicalImageSegmentation(
+        in_channels=1, 
+        num_classes=4,  # 背景 + 3种病灶类型
+        group_type='SO2'
+    )
+    
+    # 数据加载器（假设已定义）
+    train_loader = get_medical_train_loader()
+    val_loader = get_medical_val_loader()
+    
+    # 训练器
+    trainer = MedicalSegmentationTrainer(
+        model, train_loader, val_loader, device='cuda'
+    )
+    
+    # 训练循环
+    best_dice = 0
+    for epoch in range(100):
+        train_loss = trainer.train_epoch()
+        val_loss, val_dice = trainer.validate()
+        
+        print(f'Epoch {epoch}: Train Loss: {train_loss:.4f}, '
+              f'Val Loss: {val_loss:.4f}, Val Dice: {val_dice:.4f}')
+        
+        # 保存最佳模型
+        if val_dice > best_dice:
+            best_dice = val_dice
+            torch.save(model.state_dict(), 'best_medical_seg_model.pth')
+        
+        trainer.scheduler.step(val_loss)
+```
+
+这个医学影像分析案例展示了：
+
+1. **SO(2)等变卷积**：处理任意方向的病灶检测
+2. **等变性正则化**：通过旋转一致性损失改善泛化
+3. **多任务学习**：同时进行分割和方向预测
+4. **实际训练流程**：包含完整的训练、验证和评估代码
+
+该模型能够：
+- 检测任意方向的医学病灶，无需数据增强
+- 提供方向信息，有助于临床诊断
+- 通过等变性约束提高在有限标注数据上的性能
+- 在不同医学影像模态间具有更好的泛化能力
 
 = 总结与展望
 
