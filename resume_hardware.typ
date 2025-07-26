@@ -65,7 +65,7 @@
   #grid(
     columns: (1fr, 1fr, 1fr),
     gutter: 1em,
-    [📞 +86 132-7920-7621],
+    [📞 +86 197-3087-8895],
     [`evaristebernhardwiener@gmail.com`],
     [`github.com/henryhello`]
   )
